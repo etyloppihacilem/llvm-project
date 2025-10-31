@@ -39,16 +39,29 @@ void appendEscapeSnippet(const llvm::StringRef Text, std::string *Out) {
   }
 }
 
-void appendOptionalChunk(const CodeCompletionString &CCS, std::string *Out) {
+/// Removes the value for defaults arguments.
+static void addWithoutValue(std::string *Out, const std::string &ToAdd) {
+  size_t Val = ToAdd.find('=');
+  if (Val != ToAdd.npos)
+    *Out += ToAdd.substr(0, Val - 1); // removing value in definition
+  else
+    *Out += ToAdd;
+}
+
+void appendOptionalChunk(const CodeCompletionString &CCS, std::string *Out,
+                         bool RemoveValues = false) {
   for (const CodeCompletionString::Chunk &C : CCS) {
     switch (C.Kind) {
     case CodeCompletionString::CK_Optional:
       assert(C.Optional &&
              "Expected the optional code completion string to be non-null.");
-      appendOptionalChunk(*C.Optional, Out);
+      appendOptionalChunk(*C.Optional, Out, RemoveValues);
       break;
     default:
-      *Out += C.Text;
+      if (RemoveValues)
+        addWithoutValue(Out, C.Text);
+      else
+        *Out += C.Text;
       break;
     }
   }
@@ -266,6 +279,10 @@ void getSignature(const CodeCompletionString &CCS, std::string *Signature,
       assert(Chunk.Optional);
       // No need to create placeholders for default arguments in Snippet.
       appendOptionalChunk(*Chunk.Optional, Signature);
+      if (!IncludeFunctionArguments) { // complete args with default value in
+                                       // definition
+        appendOptionalChunk(*Chunk.Optional, Snippet, /*RemoveValues=*/true);
+      }
       break;
     case CodeCompletionString::CK_Placeholder:
       *Signature += Chunk.Text;
@@ -311,13 +328,6 @@ void getSignature(const CodeCompletionString &CCS, std::string *Signature,
       *Snippet += Chunk.Text;
       break;
     case CodeCompletionString::CK_LeftParen:
-      // We're assuming that a LeftParen in a declaration starts a function
-      // call, and arguments following the parenthesis could be discarded if
-      // IncludeFunctionArguments is false.
-      if (!IncludeFunctionArguments &&
-          ResultKind == CodeCompletionResult::RK_Declaration)
-        TruncateSnippetAt.emplace(Snippet->size());
-      [[fallthrough]];
     case CodeCompletionString::CK_RightParen:
     case CodeCompletionString::CK_LeftBracket:
     case CodeCompletionString::CK_RightBracket:
