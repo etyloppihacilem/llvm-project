@@ -3440,17 +3440,17 @@ static void AddFunctionTypeQuals(CodeCompletionBuilder &Result,
 
   // Handle single qualifiers without copying
   if (Quals.hasOnlyConst()) {
-    Result.AddInformativeChunk(" const");
+    Result.AddFunctionQualifierChunk(" const");
     return;
   }
 
   if (Quals.hasOnlyVolatile()) {
-    Result.AddInformativeChunk(" volatile");
+    Result.AddFunctionQualifierChunk(" volatile");
     return;
   }
 
   if (Quals.hasOnlyRestrict()) {
-    Result.AddInformativeChunk(" restrict");
+    Result.AddFunctionQualifierChunk(" restrict");
     return;
   }
 
@@ -3462,7 +3462,7 @@ static void AddFunctionTypeQuals(CodeCompletionBuilder &Result,
     QualsStr += " volatile";
   if (Quals.hasRestrict())
     QualsStr += " restrict";
-  Result.AddInformativeChunk(Result.getAllocator().CopyString(QualsStr));
+  Result.AddFunctionQualifierChunk(Result.getAllocator().CopyString(QualsStr));
 }
 
 static void

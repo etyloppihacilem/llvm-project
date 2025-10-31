@@ -184,6 +184,7 @@ void getSignature(const CodeCompletionString &CCS, std::string *Signature,
   unsigned SnippetArg = 0;
   bool HadObjCArguments = false;
   bool HadInformativeChunks = false;
+  int IsTemplateArgument = 0;
 
   std::optional<unsigned> TruncateSnippetAt;
   for (const auto &Chunk : CCS) {
@@ -252,9 +253,14 @@ void getSignature(const CodeCompletionString &CCS, std::string *Signature,
         }
       }
       break;
-    case CodeCompletionString::CK_Text:
+    case CodeCompletionString::CK_FunctionQualifier:
+      if (!IncludeFunctionArguments) // if not a call
+        *Snippet += Chunk.Text;
       *Signature += Chunk.Text;
+      break;
+    case CodeCompletionString::CK_Text:
       *Snippet += Chunk.Text;
+      *Signature += Chunk.Text;
       break;
     case CodeCompletionString::CK_Optional:
       assert(Chunk.Optional);
@@ -263,15 +269,19 @@ void getSignature(const CodeCompletionString &CCS, std::string *Signature,
       break;
     case CodeCompletionString::CK_Placeholder:
       *Signature += Chunk.Text;
-      ++SnippetArg;
-      if (SnippetArg == CursorSnippetArg) {
-        // We'd like to make $0 a placeholder too, but vscode does not support
-        // this (https://github.com/microsoft/vscode/issues/152837).
-        *Snippet += "$0";
+      if (IncludeFunctionArguments || IsTemplateArgument) {
+        ++SnippetArg;
+        if (SnippetArg == CursorSnippetArg) {
+          // We'd like to make $0 a placeholder too, but vscode does not support
+          // this (https://github.com/microsoft/vscode/issues/152837).
+          *Snippet += "$0";
+        } else {
+          *Snippet += "${" + std::to_string(SnippetArg) + ':';
+          appendEscapeSnippet(Chunk.Text, Snippet);
+          *Snippet += '}';
+        }
       } else {
-        *Snippet += "${" + std::to_string(SnippetArg) + ':';
-        appendEscapeSnippet(Chunk.Text, Snippet);
-        *Snippet += '}';
+        *Snippet += Chunk.Text;
       }
       break;
     case CodeCompletionString::CK_Informative:
@@ -290,6 +300,16 @@ void getSignature(const CodeCompletionString &CCS, std::string *Signature,
       llvm_unreachable("Unexpected CK_CurrentParameter while collecting "
                        "CompletionItems");
       break;
+    case CodeCompletionString::CK_LeftAngle:
+      IsTemplateArgument++;
+      *Signature += Chunk.Text;
+      *Snippet += Chunk.Text;
+      break;
+    case CodeCompletionString::CK_RightAngle:
+      IsTemplateArgument--;
+      *Signature += Chunk.Text;
+      *Snippet += Chunk.Text;
+      break;
     case CodeCompletionString::CK_LeftParen:
       // We're assuming that a LeftParen in a declaration starts a function
       // call, and arguments following the parenthesis could be discarded if
@@ -303,8 +323,6 @@ void getSignature(const CodeCompletionString &CCS, std::string *Signature,
     case CodeCompletionString::CK_RightBracket:
     case CodeCompletionString::CK_LeftBrace:
     case CodeCompletionString::CK_RightBrace:
-    case CodeCompletionString::CK_LeftAngle:
-    case CodeCompletionString::CK_RightAngle:
     case CodeCompletionString::CK_Comma:
     case CodeCompletionString::CK_Colon:
     case CodeCompletionString::CK_SemiColon:
@@ -319,8 +337,6 @@ void getSignature(const CodeCompletionString &CCS, std::string *Signature,
       break;
     }
   }
-  if (TruncateSnippetAt)
-    *Snippet = Snippet->substr(0, *TruncateSnippetAt);
 }
 
 std::string formatDocumentation(const CodeCompletionString &CCS,
