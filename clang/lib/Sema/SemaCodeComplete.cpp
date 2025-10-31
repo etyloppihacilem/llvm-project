@@ -6859,12 +6859,26 @@ void SemaCodeCompletion::CodeCompleteQualifiedId(Scope *S, CXXScopeSpec &SS,
   // resolves to a dependent record.
   DeclContext *Ctx = SemaRef.computeDeclContext(SS, /*EnteringContext=*/true);
 
+  // This is used to change context to access private methods for completion
+  DeclContext *SavedContext = nullptr;
+  if (!SemaRef.CurContext->isFunctionOrMethod() &&
+      !SemaRef.CurContext->isRecord()) {
+    // We are in global scope or namespace
+    // -> likely a method definition
+    SavedContext = SemaRef.CurContext;
+    SemaRef.CurContext = Ctx; // Simulate that we are in class scope
+                              // to access private methods
+  }
+
   // Try to instantiate any non-dependent declaration contexts before
   // we look in them. Bail out if we fail.
   NestedNameSpecifier NNS = SS.getScopeRep();
   if (NNS && !NNS.isDependent()) {
-    if (Ctx == nullptr || SemaRef.RequireCompleteDeclContext(SS, Ctx))
+    if (Ctx == nullptr || SemaRef.RequireCompleteDeclContext(SS, Ctx)) {
+      if (SavedContext)
+        SemaRef.CurContext = SavedContext;
       return;
+    }
   }
 
   ResultBuilder Results(SemaRef, CodeCompleter->getAllocator(),
@@ -6910,6 +6924,8 @@ void SemaCodeCompletion::CodeCompleteQualifiedId(Scope *S, CXXScopeSpec &SS,
                                /*IncludeDependentBases=*/true,
                                CodeCompleter->loadExternal());
   }
+  if (SavedContext)
+    SemaRef.CurContext = SavedContext;
 
   HandleCodeCompleteResults(&SemaRef, CodeCompleter,
                             Results.getCompletionContext(), Results.data(),
